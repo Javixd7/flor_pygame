@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pointillism Lily — Python + NumPy</title>
+<script src="https://cdn.jsdelivr.net/pyodide/v0.27.7/full/pyodide.js"></script>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#08060c;color:#eee;font:16px system-ui;text-align:center}
+main{max-width:760px;margin:auto;padding:16px}h1{font-size:1.3rem}canvas{width:min(100%,360px);height:auto;max-height:70vh;object-fit:contain;background:#04020a;border:1px solid #35243c}
+.controls{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin:12px}button{padding:9px 14px;border:1px solid #725879;border-radius:9px;background:#201526;color:white}
+#status{color:#cdb8d5;min-height:2em}.note{font-size:.85rem;color:#b9adbf}
+</style></head>
+<body><main><h1>Pointillism Lily</h1><p id="status">Cargando Python y NumPy…</p>
+<canvas id="view" width="720" height="1280"></canvas>
+<div class="controls"><button id="pause">Pausar</button><button id="reset">Reiniciar</button><label>Velocidad <input id="speed" type="range" min=".25" max="2" step=".25" value="1"></label></div>
+<p class="note">Versión experimental: Python + NumPy en el navegador. El primer arranque puede tardar.</p></main>
+<script>
+let pyodide, frameFn, t=0, last=0, paused=false, speed=1, busy=false;
+const canvas=document.getElementById('view'), ctx=canvas.getContext('2d',{alpha:false});
+const status=document.getElementById('status'), image=ctx.createImageData(720,1280);
+document.getElementById('pause').onclick=()=>{paused=!paused;document.getElementById('pause').textContent=paused?'Continuar':'Pausar'};
+document.getElementById('reset').onclick=()=>{t=0};
+document.getElementById('speed').oninput=e=>speed=Number(e.target.value);
+async function start(){
+ try{
+  pyodide=await loadPyodide(); await pyodide.loadPackage('numpy');
+  const response=await fetch('./main.py'); if(!response.ok) throw new Error('No se pudo cargar main.py');
+  await pyodide.runPythonAsync(await response.text());
+  frameFn=pyodide.globals.get('frame');
+  status.textContent='Listo. Renderizando la flor…';
+  requestAnimationFrame(loop);
+ }catch(e){status.textContent='Error: '+e.message;console.error(e)}
+}
+async function loop(now){
+ requestAnimationFrame(loop);
+ if(!frameFn||paused||busy)return;
+ if(now-last<33)return; // limita a ~30 FPS para dar margen al render de NumPy
+ last=now; busy=true;
+ try{
+   const pyBytes=frameFn(t);
+   const bytes=pyBytes.toJs();
+   image.data.set(bytes);
+   ctx.putImageData(image,0,0);
+   pyBytes.destroy(); bytes?.destroy?.();
+   t+=Math.min(.08,(now-(loop.prev||now))/1000)*speed; loop.prev=now;
+ }catch(e){status.textContent='Error al dibujar: '+e.message;console.error(e);paused=true}
+ finally{busy=false}
+}
+start();
+</script></body></html>
